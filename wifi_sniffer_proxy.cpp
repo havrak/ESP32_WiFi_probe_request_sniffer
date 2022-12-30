@@ -74,6 +74,7 @@ void WiFiSnifferProxy::switchChannel()
 
 
 bool WiFiSnifferProxy::checkForSuspiciousDevices() {
+  bool toReturn = false;
   for (int i = 0; i < MAX_DEVICE_TRACKED; i++) {
     if (devices[i].timestampBuffer[1] == 0) continue; // log not occupied
     if (millis() - devices[i].timestampBuffer[devices[i].index] > FORGET_TIME) {
@@ -88,10 +89,13 @@ bool WiFiSnifferProxy::checkForSuspiciousDevices() {
       if(millis()-devices[i].timestampBuffer[j]<LOGGED_TIME) counter++;
     }
     if(counter >=neededNumberOfLogs){
-      return true; // some devices has been here for longer that 10 minutes
+      if(devices[i].alertRaised < 200)
+      devices[i].alertRaised++;
+      if(devices[i].alertRaised < DEVICE_IGNORED_AFTER_ALARMS) 
+        toReturn = true; // some non ignored devices has been here for longer that 10 minutes
     }
   }
-  return false;
+  return toReturn;
 }
 
 void WiFiSnifferProxy::logBeaconedDeviceAddress(const uint8_t* address) {

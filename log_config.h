@@ -16,6 +16,7 @@
 #define LOGGED_TIME (10*60000) // 10 minutes
 #define FORGET_TIME (LOGGED_TIME/2)
 #define TOLERANCE 0.8  // 80% of logs have to fall in LOGGED_TIME (that is 80% of logs have to be younger than 10 minutes)
+#define DEVICE_IGNORED_AFTER_ALARMS 20
 
 static const uint16_t arraySize = LOGGED_TIME/GAP_SIZE+10; // + add buffer space
 static const uint16_t neededNumberOfLogs = LOGGED_TIME/GAP_SIZE/5*4;
@@ -25,6 +26,7 @@ typedef struct{
   uint64_t timestampBuffer[arraySize]; // switch to
   uint8_t index = 1;
   uint8_t start = 0;
+  uint8_t alertRaised = 0;
 } deviceLog;
 
 #endif /* !LOG_CONFIG_H */

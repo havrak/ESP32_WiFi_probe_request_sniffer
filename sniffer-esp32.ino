@@ -92,6 +92,7 @@ void processSerialInput() {
 void setup()
 {
   EEPROM.begin(EEPROM_SIZE);
+  Wire.begin((uint8_t)0x52);
   loadFromEEEProm();
   Serial.print(millis());
 
@@ -105,7 +106,11 @@ void setup()
 void loop() {
   delay(1000); // wait for a second
   //BluetoothSnifferProxy::getInstance()->scan();
-  //BluetoothSnifferProxy::getInstance()->checkForSuspiciousDevices();
+  BluetoothSnifferProxy::getInstance()->checkForSuspiciousDevices();
   WiFiSnifferProxy::getInstance()->switchChannel();
   WiFiSnifferProxy::getInstance()->checkForSuspiciousDevices();
+  uint8_t buffer[2];
+  buffer[1] = WiFiSnifferProxy::getInstance()->checkForSuspiciousDevices();
+  buffer[2] = BluetoothSnifferProxy::getInstance()->checkForSuspiciousDevices();
+  Wire.slaveWrite(buffer, sizeof(buffer));
 }
