@@ -21,16 +21,20 @@ void WiFiSnifferProxy::wifiSnifferPacketHandler(void* buff, wifi_promiscuous_pkt
   const wifi_promiscuous_pkt_t *ppkt = (wifi_promiscuous_pkt_t *)buff;
   const wifi_ieee80211_packet_t *ipkt = (wifi_ieee80211_packet_t *)ppkt->payload;
   const wifi_ieee80211_mac_hdr_t *hdr = &ipkt->hdr;
-
-  printf("CHAN=%02d, RSSI=%02d,"
-         " ADDR=%02x:%02x:%02x:%02x:%02x:%02x\n",
+  printf("CHAN=%02d, RSSI=%02d, ADDR=%02x:%02x:%02x:%02x:%02x:%02x\n",
+  //printf("CHAN=%02d, RSSI=%02d, ADDR1=%02x:%02x:%02x:%02x:%02x:%02x, ADDR2=%02x:%02x:%02x:%02x:%02x:%02x, ADDR3=%02x:%02x:%02x:%02x:%02x:%02x\n",
          ppkt->rx_ctrl.channel,
          ppkt->rx_ctrl.rssi,
          /* ADDR */
+         //hdr->addr1[0], hdr->addr1[1], hdr->addr1[2],
+         //hdr->addr1[3], hdr->addr1[4], hdr->addr1[5],
+         
          hdr->addr2[0], hdr->addr2[1], hdr->addr2[2],
          hdr->addr2[3], hdr->addr2[4], hdr->addr2[5]
+         
+         //hdr->addr3[0], hdr->addr3[1], hdr->addr3[2],
+         //hdr->addr3[3], hdr->addr3[4], hdr->addr3[5]
         );
-
   WiFiSnifferProxy::getInstance()->logBeaconedDeviceAddress(hdr->addr2);
 }
 
@@ -74,6 +78,7 @@ void WiFiSnifferProxy::switchChannel()
 
 
 bool WiFiSnifferProxy::checkForSuspiciousDevices() {
+  
   bool toReturn = false;
   for (int i = 0; i < MAX_DEVICE_TRACKED; i++) {
     if (devices[i].timestampBuffer[1] == 0) continue; // log not occupied
@@ -99,7 +104,8 @@ bool WiFiSnifferProxy::checkForSuspiciousDevices() {
 }
 
 void WiFiSnifferProxy::logBeaconedDeviceAddress(const uint8_t* address) {
-
+  return;
+  
   int index = -1;
   for (int i = 0; i < MAX_DEVICE_TRACKED; i++) {
     if (devices[i].mac[0] == address[0] && devices[i].mac[1] == address[1] && devices[i].mac[2] == address[2] && devices[i].mac[3] == address[3] && devices[i].mac[4] == address[4] && devices[i].mac[5] == address[5]) {
@@ -133,10 +139,10 @@ void WiFiSnifferProxy::logBeaconedDeviceAddress(const uint8_t* address) {
     Serial.println(index);
     if (millis() - devices[index].timestampBuffer[devices[index].index] < GAP_SIZE) return;
 
-    if (devices[index].index + 1 % arraySize == devices[index].start) {
-      devices[index].start++;
+    if ((devices[index].index + 1) % arraySize == devices[index].start) {
+      devices[index].start = (devices[index].start + 1) % arraySize;
     }
-    devices[index].index = devices[index].index + 1 % arraySize;
+    devices[index].index = (devices[index].index + 1) % arraySize;
     devices[index].timestampBuffer[devices[index].index] = millis();
     Serial.print("WIFI_SNIFFER_PROXY | logBeaconedDeviceAddress | log updated ");
   }

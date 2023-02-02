@@ -1,6 +1,5 @@
 // vim: set ft=arduino:
 #include "wifi_sniffer_proxy.h"
-#include "bluetooth_sniffer_proxy.h"
 #include "EEPROM.h"
 #include "Wire.h"
 #define EEPROM_SIZE 96
@@ -99,18 +98,13 @@ void setup()
   Serial.begin(115200);
   while (!Serial);
 	WiFiSnifferProxy::getInstance();
-  //BluetoothSnifferProxy::getInstance(); // While it works it is basically pointels as modern mobile phones are visible only when pairing menu is open
 
 }
 
 void loop() {
-  delay(1000); // wait for a second
-  //BluetoothSnifferProxy::getInstance()->scan();
-  BluetoothSnifferProxy::getInstance()->checkForSuspiciousDevices();
+  //Serial.println("LOOP");
   WiFiSnifferProxy::getInstance()->switchChannel();
-  WiFiSnifferProxy::getInstance()->checkForSuspiciousDevices();
-  uint8_t buffer[2];
-  buffer[1] = WiFiSnifferProxy::getInstance()->checkForSuspiciousDevices();
-  buffer[2] = BluetoothSnifferProxy::getInstance()->checkForSuspiciousDevices();
-  Wire.slaveWrite(buffer, sizeof(buffer));
+  //uint8_t buffer[1];
+  //buffer[0] = WiFiSnifferProxy::getInstance()->checkForSuspiciousDevices();
+  //Wire.slaveWrite(buffer, sizeof(buffer));
 }
