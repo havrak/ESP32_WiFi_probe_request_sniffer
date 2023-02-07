@@ -29,7 +29,6 @@ bool loadFromEEEProm(){
   debug = EEPROM.read(4);
   Serial.print("MAIN | loadFromEEEProm | debug: ");
   Serial.println(debug);
-
   return true;
 }
 
