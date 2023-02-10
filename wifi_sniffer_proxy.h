@@ -13,28 +13,42 @@
 #include "freertos/FreeRTOS.h"
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
+#include "esp_timer.h"
 #include "esp_system.h"
 #include "esp_event.h"
 #include "esp_event_loop.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
+#include "mbedtls/md.h"
 
 #define DATA_LENGTH           112
 #define MAX_FRAME_BODY_LENGHT 255
 #define WIFI_CHANNEL_SWITCH_INTERVAL  (500)
 #define MAX_DEVICE_TRACKED 40
+#define SSID_MAX_LEN  32
+#define BURST_DELAY 2000 // no device
 
-#define DOT11_FRAME_BODY_ELEMENT_ID_SSID 0 // NOT // id(1)-length(1)-SSID(0-32)
-#define DOT11_FRAME_BODY_ELEMENT_ID_DSSS 3 // id(1)-length(1)-channel(1)
-#define DOT11_FRAME_BODY_ELEMENT_ID_SUPPORTED_RATES 1 // id(1)-length(1)-supported rates(1-8)
-#define DOT11_FRAME_BODY_ELEMENT_ID_HT_CAPABILITIES 45 // id(1)-length(1)-ht capability info(2)-A-MPDU(1)-MCS SET(16)-HT extended(2)-Transmit Beamforming (4)-ASEL (1)
-#define DOT11_FRAME_BODY_ELEMENT_ID_SUPPORTED_RATES_EXTENDED 50 // id(1)-length(1)-Extended Support Rates(1-255)
-#define DOT11_FRAME_BODY_ELEMENT_ID_SUPPORTED_OPERATING_CLASSES 59 // NOT // id(1)-length(1)-Current Operating Class(1)-Current Operating Class Extension(var, opt), Operating Class Duple Sequence(var, opt)
+#define DOT11_FRAME_BODY_ELEMENT_ID_SSID 0
+	// NOT // id(1)-length(1)-SSID(0-32)
+#define DOT11_FRAME_BODY_ELEMENT_ID_DSSS 3
+	// id(1)-length(1)-channel(1)
+#define DOT11_FRAME_BODY_ELEMENT_ID_SUPPORTED_RATES 1
+	// id(1)-length(1)-supported rates(1-8)
+#define DOT11_FRAME_BODY_ELEMENT_ID_HT_CAPABILITIES 45
+	// id(1)-length(1)-ht capability info(2)-A-MPDU(1)-MCS SET(16)-HT extended(2)-Transmit Beamforming (4)-ASEL (1)
+#define DOT11_FRAME_BODY_ELEMENT_ID_SUPPORTED_RATES_EXTENDED 50
+	// id(1)-length(1)-Extended Support Rates(1-255)
+#define DOT11_FRAME_BODY_ELEMENT_ID_SUPPORTED_OPERATING_CLASSES 59
+	// NOT // id(1)-length(1)-Current Operating Class(1)-Current Operating Class Extension(var, opt), Operating Class Duple Sequence(var, opt)
 	// Current Operating Class Extension - oddělovač 130 - položky
 	// Operating Class Duple Sequence - odělovač 00 - 2xpočet položek v Operating Class Extension
-#define DOT11_FRAME_BODY_ELEMENT_ID_2040COEX 72 // id(1)-length(1)-20/40 BSS Coexistence(1)
+#define DOT11_FRAME_BODY_ELEMENT_ID_2040COEX 72
+	// id(1)-length(1)-20/40 BSS Coexistence(1)
 	// inforamtion request(1), 40 MHz toleratnt(1), 20MHz BSS Width Request (1), OBSS Scanning Exemption Request (1), OBSS Scanning Exemption Grant (1), Reserved (1)
-#define DOT11_FRAME_BODY_ELEMENT_ID_EXTENDED_CAPABILITES 127 // NOT // id(1)-length(1)-Extended Capabilities(88 bitů)
+#define DOT11_FRAME_BODY_ELEMENT_ID_EXTENDED_CAPABILITES 127
+	// NOT // id(1)-length(1)-Extended Capabilities(88 bitů)
+
+#define DOT11_FRAME_BODY_PARSING_DEBUG if(false)
 
 
 
@@ -45,37 +59,35 @@ typedef struct{
 	uint8_t supported_rates[8];
 	uint16_t ht_capability_info;
 	uint8_t ht_a_mpdu_param;
+	uint8_t supported_mcs_set[16];
 	uint16_t ht_extended_cap;
 	uint32_t ht_transmit_beamforming_cap;
-	uint8_t ht_ansel_cap;
+	uint8_t extended_cap[11];
+	uint8_t ht_asel_cap;
 	uint8_t coex_20_40;
 } wifi_ieee80211_probe_reqest_body_parsed_t;
 
 typedef struct{
 	wifi_ieee80211_probe_reqest_body_parsed_t body;
   uint8_t addr[6];
-	uint64_t lastFrame;
-	uint16_t innerBurstSpace[20]; // delta between current time and time of last frame
+	uint64_t lastFrame = 0;
+	uint8_t burstFrameSpaceIndex = 0;
+	uint16_t innerBurstSpace[40]; // delta between current time and time of last frame
 
 } burst_frame_parsed_t;
 
 typedef struct{
-  uint32_t LSHsigniture;
+  uint8_t signature[16];
   uint16_t innerBurstDelay; // switch to
   uint8_t lastUnderMAC[6];
-	uint8_t appearedUnderNoMAC;
-
-  /* uint64_t timestampBuffer[arraySize]; // switch to */
-  /* uint8_t index = 1; */
-  /* uint8_t start = 0; */
-  /* uint8_t alertRaised = 0; */
+	uint8_t appearedUnderNoMAC = 1;
+	uint64_t lastSeen;
 } device_log_t;
 
 
-
+static uint8_t emptyMAC[6] = {0};
 static uint8_t level = 0, channel = 0;
 static wifi_country_t wifi_country = {.cc="CN", .schan = 1, .nchan = 13, .policy=WIFI_COUNTRY_POLICY_AUTO}; //Most recent esp32 library struct
-
 
 // formwat of general MAC frame header
 typedef struct {
@@ -105,6 +117,8 @@ class WiFiSnifferProxy{
 
     //deviceLog devices[MAX_DEVICE_TRACKED];
 		burst_frame_parsed_t burstFrames[MAX_DEVICE_TRACKED];
+		device_log_t devices[MAX_DEVICE_TRACKED];
+
 
     WiFiSnifferProxy();
 
@@ -112,6 +126,9 @@ class WiFiSnifferProxy{
 
     bool first = true;
 
+
+		static bool compareByteArray(uint8_t *arr1, uint8_t *arr2, uint16_t len);
+		static void mergeFrameBodyParsed(wifi_ieee80211_probe_reqest_body_parsed_t *dest, wifi_ieee80211_probe_reqest_body_parsed_t *toMerge);
     static esp_err_t eventHandler(void *ctx, system_event_t *event);
     static void wifiSnifferPacketHandler(void *buff, wifi_promiscuous_pkt_type_t type);
 
@@ -129,9 +146,7 @@ class WiFiSnifferProxy{
 
     void switchChannel();
 
-    void logBeaconedDeviceAddress(const uint8_t* address);
-
-    bool checkForSuspiciousDevices();
+    void updateDeviceLog();
 
     /**
      * returns whether periphery is active

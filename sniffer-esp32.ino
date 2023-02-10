@@ -106,4 +106,5 @@ void loop() {
   //uint8_t buffer[1];
   //buffer[0] = WiFiSnifferProxy::getInstance()->checkForSuspiciousDevices();
   //Wire.slaveWrite(buffer, sizeof(buffer));
+	WiFiSnifferProxy::getInstance()->updateDeviceLog();
 }
